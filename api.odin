@@ -4,6 +4,8 @@
 
 package ecs
 
+import "core:fmt"
+
 // ======================
 // API::DATA TYPES
 // ======================
@@ -60,11 +62,6 @@ sparse_set_init :: proc($T: typeid, cap: int) -> SparseSet(T) {
   }
 }
 
-sparse_set_get :: proc ($T: typeid) -> (u64, ^SparseSet(T)) {
-  meta := &component_registry[typeid_of(T)]
-  return meta.id, cast(^SparseSet(T))meta.storage
-}
-
 sparse_set_add :: proc(set: ^SparseSet($T), id: u64, item: T, overwrite: bool = true) {
   if id >= cast(u64)len(set.sparse) {
     old_len := len(set.sparse)
@@ -73,13 +70,14 @@ sparse_set_add :: proc(set: ^SparseSet($T), id: u64, item: T, overwrite: bool = 
       set.sparse[i] = 0
     }
   }
-
+  //fmt.println(set.sparse[id], set)
   if set.sparse[id] == 0 {
     append(&set.data, item)
     append(&set.dense_ids, id)
     set.sparse[id] = len(set.data)
   } else if overwrite {
-    set.data[set.sparse[id]] = item // overwrite
+    //fmt.println(set.sparse[id])
+    set.data[set.sparse[id]-1] = item // overwrite
   }
 }
 
@@ -113,6 +111,11 @@ component_register :: proc($T: typeid) {
     next_component_bit += 1
 }
 
+component_sparse_set_get :: proc ($T: typeid) -> (u64, ^SparseSet(T)) {
+  meta := &component_registry[typeid_of(T)]
+  return meta.id, cast(^SparseSet(T))meta.storage
+}
+
 // ======================
 // API::ENTITY PROCS
 // ======================
@@ -124,23 +127,24 @@ entity_create :: proc() -> Entity {
 }
 
 entity_add_component :: proc(e: Entity, comp: $T) -> Entity {
-  c_mask, set := sparse_set_get(T)
-  e := Entity{e.id, e.mask ~ c_mask}
-
+  c_mask, set := component_sparse_set_get(T)
+  e := Entity{e.id, e.mask | c_mask}
   sparse_set_add(set, e.id, comp)
-  
   for i in 0..<len(archetypes) {
     arch := &archetypes[i]
     if arch.mask & e.mask == arch.mask {
-      sparse_set_add(&arch.entities, e.id, e, false)
+      //fmt.println(e.id, e.mask, arch.mask, arch.entities)
+      sparse_set_add(&arch.entities, e.id, e, true)
+      //fmt.println(e.id, e.mask, arch.mask, arch.entities)
     } 
   }
   return e
 }
 
 entity_get_component :: proc(eid: u64, $T: typeid) -> (^T, bool) {
-  _, set := sparse_set_get(T)
+  _, set := component_sparse_set_get(T)
   idx := set.sparse[eid]
+  
   if idx == 0 do return nil, false
   return &set.data[idx-1], true
 }
@@ -189,10 +193,8 @@ archetype_get_or_create :: proc(mask: u64) -> ^Archetype {
     if arch.mask == mask {
       return arch
     }
-  }
-
-  arch := Archetype{mask = mask}
-  append(&archetypes, arch)
+  } 
+  append(&archetypes, Archetype{mask = mask, entities = sparse_set_init(Entity, 10000)})
   return &archetypes[len(archetypes)-1]
 }
 

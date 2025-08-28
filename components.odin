@@ -6,78 +6,127 @@ package ecs
 
 import rl "vendor:raylib"
 
+// general purpose components
+
+
 PrevPosition :: struct {
-  using pos: [2]i32
+  using pos: [3]f32
 }
 
 Position :: struct {
-  using pos: [2]i32,
+  using pos: [3]f32,
 }
 
+CameraFollow :: struct {}
+
+// camera components
+
+CameraType :: union{rl.Camera3D}
+CameraProjection :: union{rl.CameraProjection}
+Camera :: struct {
+  camera: CameraType,
+  target: [3]f32,
+  up: [3]f32,
+  fovy: f32,
+  projection: CameraProjection
+} 
+
+CameraMousePan :: struct {}
+
+// physical entity components
+
 Physics :: struct {
-  vel: [2]f32,
-  acc: [2]f32,
+  vel: [3]f32,
+  acc: [3]f32,
   damp: f32,
   collision_damp: f32
 }
 
 Controller :: struct {
-  speed: i32,
-  k_up, k_down, k_left, k_right, k_sprint: rl.KeyboardKey
+  speed: f32,
+  k_up, k_down, k_left, k_right, k_backward, k_forward, k_sprint: rl.KeyboardKey
 }
 
+
 RectRenderer :: struct {
-  w, h: i32,
+  size: [2]f32,
   color: rl.Color
 }
 
 CircleRenderer :: struct {
-  d: i32,
+  d: f32,
   color: rl.Color
 }
 
-RectCollider :: struct {
-  w, h: i32
+CubeRenderer :: struct {
+  size: [3]f32,
+  color: rl.Color
 }
 
-RandMover :: struct {speed: i32}
+SphereRenderer :: struct {
+  d: f32,
+  color: rl.Color
+}
 
-KeepInScreen :: struct {}
+
+CubeCollider :: struct {
+  size: [3]f32
+}
+
+RandMover :: struct {speed: f32}
+
 
 
 
 
 // Pyllbug-specific components
 
-
-Pyll :: struct {}
-
 PyllRenderer :: struct {
   using circle: CircleRenderer
 }
 
 Neighbor :: struct {
-  id: u64,
-  dist: i32
+  id: Maybe(u64),
+  dist: f32
 }
 
 Neighbors :: struct  {
-  ids: [NUM_NN]Neighbor
+  ids: [NUM_NN]Neighbor,
+  size: i32,
+  closest: Maybe(u64),
+  closest_dist: f32,
 }
+
+NNMover :: struct {
+  speed: f32
+}
+
+
+Pyll :: struct {}
+KeepInScreen :: struct {}
+RenderNeighborPaths :: struct {}
 
 
 
 register_components :: proc () {
+  component_register(Camera)
+  component_register(CameraMousePan)
+
   component_register(PrevPosition)
   component_register(Position)
   component_register(Physics)
-  component_register(RectRenderer)
-  component_register(CircleRenderer)
+  //component_register(RectRenderer)
+  //component_register(CircleRenderer)
+  component_register(CameraFollow)
+  component_register(CubeRenderer)
+  component_register(SphereRenderer)  
   component_register(PyllRenderer)
   component_register(Pyll)
   component_register(RandMover)
   component_register(Controller)
+  component_register(NNMover)
   component_register(KeepInScreen)
-  component_register(RectCollider)
-  
+  component_register(CubeCollider)
+  component_register(Neighbors)
+  component_register(RenderNeighborPaths)
 }
