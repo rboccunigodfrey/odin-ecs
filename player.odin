@@ -14,8 +14,8 @@ init_player :: proc () {
   player := entity_create()
   player = entity_add_component(player, PrevPosition{})
   player = entity_add_component(player, Position{{50, 50, 0}})
-  player = entity_add_component(player, Physics{damp=0.95, collision_damp=0.0})
-  player = entity_add_component(player, SphereRenderer{d = player_size, color = rl.YELLOW})
+  player = entity_add_component(player, Physics{damp=0.9, collision_damp=0.0})
+  player = entity_add_component(player, SphereRenderer{d = player_size, color = YELLOW})
   player = entity_add_component(player, Controller{
     speed = 1,
     k_up = rl.KeyboardKey.SPACE,

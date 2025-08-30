@@ -4,8 +4,6 @@
 
 package ecs
 
-import rl "vendor:raylib"
-
 // general purpose components
 
 
@@ -17,17 +15,18 @@ Position :: struct {
   using pos: [3]f32,
 }
 
-CameraFollow :: struct {}
+CameraFollow :: struct {
+  camera_dir: matrix[2,2]f32
+}
 
 // camera components
 
-CameraType :: union{rl.Camera3D}
-CameraProjection :: union{rl.CameraProjection}
 Camera :: struct {
   camera: CameraType,
   target: [3]f32,
   up: [3]f32,
   fovy: f32,
+  direction: matrix[2,2]f32,
   projection: CameraProjection
 } 
 
@@ -44,28 +43,28 @@ Physics :: struct {
 
 Controller :: struct {
   speed: f32,
-  k_up, k_down, k_left, k_right, k_backward, k_forward, k_sprint: rl.KeyboardKey
+  k_up, k_down, k_left, k_right, k_backward, k_forward, k_sprint: KeyboardKey
 }
 
 
 RectRenderer :: struct {
   size: [2]f32,
-  color: rl.Color
+  color: Color
 }
 
 CircleRenderer :: struct {
   d: f32,
-  color: rl.Color
+  color: Color
 }
 
 CubeRenderer :: struct {
   size: [3]f32,
-  color: rl.Color
+  color: Color
 }
 
 SphereRenderer :: struct {
   d: f32,
-  color: rl.Color
+  color: Color
 }
 
 

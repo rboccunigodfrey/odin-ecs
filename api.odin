@@ -70,13 +70,11 @@ sparse_set_add :: proc(set: ^SparseSet($T), id: u64, item: T, overwrite: bool = 
       set.sparse[i] = 0
     }
   }
-  //fmt.println(set.sparse[id], set)
   if set.sparse[id] == 0 {
     append(&set.data, item)
     append(&set.dense_ids, id)
     set.sparse[id] = len(set.data)
   } else if overwrite {
-    //fmt.println(set.sparse[id])
     set.data[set.sparse[id]-1] = item // overwrite
   }
 }
@@ -133,9 +131,7 @@ entity_add_component :: proc(e: Entity, comp: $T) -> Entity {
   for i in 0..<len(archetypes) {
     arch := &archetypes[i]
     if arch.mask & e.mask == arch.mask {
-      //fmt.println(e.id, e.mask, arch.mask, arch.entities)
       sparse_set_add(&arch.entities, e.id, e, true)
-      //fmt.println(e.id, e.mask, arch.mask, arch.entities)
     } 
   }
   return e

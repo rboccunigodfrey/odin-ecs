@@ -18,7 +18,7 @@ ROOM_DEPTH_G    :: 10
 
 GRID_SIZE	:: 50
 
-NUM_PYLLS	:: 100
+NUM_PYLLS	:: 500
 NUM_NN		:: 4
 MAX_NN_DIST	:: 10
 
@@ -91,10 +91,10 @@ main :: proc() {
   rl.InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "ECS")
   defer rl.CloseWindow()
 
-  rl.SetTargetFPS(144)
+  rl.HideCursor()
   
-  //fmt.println(rl.IsShaderValid(shader))
-  //fmt.println(rl.IsShaderReady(shader))
+  rl.SetTargetFPS(60)
+  
   
   // main game loop
   for ; !rl.WindowShouldClose() ; {
@@ -118,9 +118,7 @@ main :: proc() {
     
 
     rl.BeginMode3D(rl_camera^)
-    fmt.println(rl_camera)
-//    batch_render_2d()
-
+    
     batch_render_3d()
     
     rl.EndMode3D()

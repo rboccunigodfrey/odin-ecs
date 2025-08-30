@@ -6,6 +6,7 @@ package ecs
 
 import rl "vendor:raylib"
 import "core:math/rand"
+import "core:math/linalg"
 import "core:math"
 import "core:fmt"
 
@@ -15,9 +16,14 @@ import "core:fmt"
 system_camera_mouse_pan :: proc (e_id: u64) {
   cam, _ := entity_get_component(e_id, Camera)
   pos, _ := entity_get_component(e_id, Position)
-
-  
+  mdelta := rl.GetMousePosition() * 0.005
+  radius : f32 = 500
+  horiz_dir : [2]f32 = linalg.vector_normalize(([2]f32){math.sin(mdelta.x), math.cos(mdelta.x)})
+  vert_dir := mdelta.y*100
+  pos.pos = {horiz_dir.x * radius, vert_dir, horiz_dir.y * radius }
+  cam.direction = {horiz_dir.x, -horiz_dir.y, horiz_dir.y, horiz_dir.x}
 }
+
 
 system_rl_camera_update :: proc (e_id: u64) {
   cam, _ := entity_get_component(e_id, Camera)
@@ -28,7 +34,7 @@ system_rl_camera_update :: proc (e_id: u64) {
 
   rl_proj, proj_ok := cam.projection.(rl.CameraProjection)
   assert(proj_ok, "Camera projection not a valid raylib projection")
-
+  
   rl_cam.position = pos.pos
   rl_cam.target = cam.target
   rl_cam.up = cam.up
@@ -40,7 +46,7 @@ system_rl_camera_update :: proc (e_id: u64) {
 
 system_reset_acceleration :: proc (e_id: u64) {
   phy, _ := entity_get_component(e_id, Physics)
-  phy.acc = 0
+  phy.acc = {0, 0.3, 0}
 }
 
 system_store_prevpos :: proc(e_id: u64) {
@@ -51,34 +57,51 @@ system_store_prevpos :: proc(e_id: u64) {
 
 system_camera_follow :: proc (e_id: u64) {
   pos, _ := entity_get_component(e_id, Position)
+  cam_follow, _ := entity_get_component(e_id, CameraFollow)
   cam_id := entity_get_by_components(Camera)[0]
   cam, _ := entity_get_component(cam_id, Camera)
   cam_pos, _ := entity_get_component(cam_id, Position)
-  cam_pos.pos = pos.pos + {0, -100, -300}
+  cam_pos.x += pos.x
+  //cam_pos.y = pos.y - 50
+  cam_pos.z += pos.z
   cam.target = pos.pos
+  cam_follow.camera_dir = cam.direction
 }
 
 system_move_player :: proc(e_id: u64) {
   pos, _ := entity_get_component(e_id, Position)
   ctrl, _ := entity_get_component(e_id, Controller)
-  phy, ok := entity_get_component(e_id, Physics)
-  //if ok {pos.x += f32(vel.x); pos.y += f32(vel.y)}
-  speed := ctrl.speed * (2 if rl.IsKeyDown(ctrl.k_sprint) else 1)
-  f_speed : = speed * 0.2
+  phy, has_phy := entity_get_component(e_id, Physics)
+  cam_follow, has_cf := entity_get_component(e_id, CameraFollow)
   
-  if rl.IsKeyDown(ctrl.k_up)    { if ok {phy.acc.y = -f_speed} else { pos.y -= speed} }
-  if rl.IsKeyDown(ctrl.k_down)    { if ok {phy.acc.y = f_speed} else { pos.y += speed} }
-  if rl.IsKeyDown(ctrl.k_left)    { if ok {phy.acc.x = -f_speed} else { pos.x -= speed} }
-  if rl.IsKeyDown(ctrl.k_right)    { if ok {phy.acc.x = f_speed} else { pos.x += speed} }
-  if rl.IsKeyDown(ctrl.k_backward)    { if ok {phy.acc.z = f_speed} else { pos.z += speed} }
-  if rl.IsKeyDown(ctrl.k_forward)    { if ok {phy.acc.z = -f_speed} else { pos.z -= speed} }
+  speed := ctrl.speed * (2 if is_key_down(ctrl.k_sprint) else 1)
+  
+  delta : [3]f32
+  
+  if is_key_down(ctrl.k_left)		{ delta.x -= 1 }
+  if is_key_down(ctrl.k_right)		{ delta.x += 1 }
+  if is_key_down(ctrl.k_up)		{ delta.y -= 1 }
+  if is_key_down(ctrl.k_down)		{ delta.y += 1 }
+  if is_key_down(ctrl.k_forward)	{ delta.z -= 1 }
+  if is_key_down(ctrl.k_backward)	{ delta.z += 1 }
+
+  if has_cf {
+    delta_shift : [2]f32 = {-delta.z, delta.x}
+    delta_shift = cam_follow.camera_dir * delta_shift
+    delta = {delta_shift.x, delta.y, delta_shift.y}
+    
+  }
+  delta *= speed
+  if has_phy do phy.vel += delta * 0.2; else do pos.pos += delta
+
+  
 }
 
 system_move_rand :: proc (e_id: u64) {
   pos, _ := entity_get_component(e_id, Position)
   rm, _ := entity_get_component(e_id, RandMover)
   phy, ok := entity_get_component(e_id, Physics)
-  amt : [3]f32 = {rm.speed * f32(rand.int31_max(3)-1), rm.speed * f32(rand.int31_max(3)-1), rm.speed * f32(rand.int31_max(3)-1)}
+  amt : [3]f32 = {rm.speed * f32(rand.int31_max(3)-1), 0, rm.speed * f32(rand.int31_max(3)-1)}
   
   if ok do phy.vel += amt; else do pos.pos += amt
 }
@@ -155,13 +178,13 @@ system_keep_in_screen :: proc (e_id: u64) {
   offset : [3]f32 = has_coll ? coll.size/2 : 0
   
   if has_phy && (pos.x < -ROOM_WIDTH/2+offset.x || pos.x > ROOM_WIDTH - offset.x) {
-    phy.vel.x *= -1
+    phy.vel.x *= -1 * phy.collision_damp
   }
   if has_phy && (pos.y < -ROOM_HEIGHT/2+offset.y || pos.y > ROOM_HEIGHT - offset.y) {
-    phy.vel.y *= -1
+    phy.vel.y *= -1 * phy.collision_damp
   }
   if has_phy && (pos.z < -ROOM_DEPTH/2+offset.x || pos.z > ROOM_DEPTH - offset.z) {
-    phy.vel.z *= -1
+    phy.vel.z *= -1 * phy.collision_damp
   }
   pos.x = clamp(pos.x, -ROOM_WIDTH/2  + offset.x, ROOM_WIDTH/2  - offset.x)
   pos.y = clamp(pos.y, -ROOM_HEIGHT/2 + offset.y, ROOM_HEIGHT/2 - offset.y)
@@ -299,10 +322,10 @@ system_render_pyll :: proc(e_id: u64) {
   pupil_size := f32(rend.d)/7
   append(&render_queue_3d,
 	 RenderCommand3D{type = .Sphere, pos = pos.pos, radius = f32(rend.d)/2, color = rend.color},
-	 RenderCommand3D{type = .Sphere, pos = pos.pos + {eye_dist, -eye_dist, eye_dist}, radius = eye_size, color = rl.WHITE},
-	 RenderCommand3D{type = .Sphere, pos = pos.pos + {-eye_dist, -eye_dist, eye_dist}, radius = eye_size, color = rl.WHITE},
-	 RenderCommand3D{type = .Sphere, pos = pos.pos + {eye_dist, -eye_dist, eye_dist}, radius = pupil_size, color = rl.BLACK},
-	 RenderCommand3D{type = .Sphere, pos = pos.pos + {-eye_dist, -eye_dist, eye_dist}, radius = pupil_size, color = rl.BLACK})
+	 RenderCommand3D{type = .Sphere, pos = pos.pos + {eye_dist, -eye_dist, eye_dist}, radius = eye_size, color = WHITE},
+	 RenderCommand3D{type = .Sphere, pos = pos.pos + {-eye_dist, -eye_dist, eye_dist}, radius = eye_size, color = WHITE},
+	 RenderCommand3D{type = .Sphere, pos = pos.pos + {eye_dist, -eye_dist, eye_dist}, radius = pupil_size, color = BLACK},
+	 RenderCommand3D{type = .Sphere, pos = pos.pos + {-eye_dist, -eye_dist, eye_dist}, radius = pupil_size, color = BLACK})
 }
 
 system_render_nn_conns :: proc (e_id: u64) {
@@ -338,7 +361,7 @@ system_update_neighbors :: proc (e_id: u64) {
     if ok {
       nn_pos, _ := entity_get_component(nn_id, Position)
       
-      dist := abs(pos.x - nn_pos.x) + abs(pos.y - nn_pos.y)
+      dist := abs(pos.x - nn_pos.x) + abs(pos.y - nn_pos.y) + abs(pos.z - nn_pos.z)
       if dist > MAX_NN_DIST {
 	nns.ids[i] = Neighbor{nil, -1}
       } else {
