@@ -2,47 +2,23 @@ package ecs
 
 import rl "vendor:raylib"
 
-
-Renderable2D :: enum {
-  Rect,
-  Circle,
-  Line
-}
-
-RenderCommand2D :: struct {
-  type: Renderable2D,
-  pos: [2]f32,
-  size: [2]f32,
-  radius: f32,
-  color: Color
-}
-
-Renderable3D :: enum {
-  Cube,
-  Sphere,
-  Line
-}
-
-RenderCommand3D :: struct {
-  type: Renderable3D,
-  pos: [3]f32,
-  size: [3]f32,
-  radius: f32,
-  color: Color
-}
-
+render_queue_2d := make([dynamic]RenderCommand2D, 0, 1000) 
+render_queue_3d := make([dynamic]RenderCommand3D, 0, 1000) 
 
 batch_render_2d :: proc () {
   for r_cmd in render_queue_2d {
+    pos := vec_to(r_cmd.pos, f32)
+    size := vec_to(r_cmd.pos, f32)
+    radius := f32(r_cmd.radius)
     switch r_cmd.type {
     case .Rect:
-      rl.DrawRectangleV(r_cmd.pos, r_cmd.size, rl.Color(r_cmd.color))
+      rl.DrawRectangleV(pos, size, rl.Color(r_cmd.color))
       break
     case .Circle:
-      rl.DrawCircleV(r_cmd.pos, r_cmd.radius, rl.Color(r_cmd.color))
+      rl.DrawCircleV(pos, radius, rl.Color(r_cmd.color))
       break
     case .Line:
-      rl.DrawLineV(r_cmd.pos, r_cmd.size, rl.Color(r_cmd.color))
+      rl.DrawLineV(pos, size, rl.Color(r_cmd.color))
     }
   }
   clear(&render_queue_2d)
@@ -51,16 +27,19 @@ batch_render_2d :: proc () {
 
 
 batch_render_3d :: proc () {
-  for r_cmd in render_queue_3d {
+  for r_cmd in render_queue_3d  {
+    pos := vec_to(r_cmd.pos, f32)
+    size := vec_to(r_cmd.pos, f32)
+    radius := f32(r_cmd.radius)
     switch r_cmd.type {
     case .Cube:
-      rl.DrawCubeV(r_cmd.pos, r_cmd.size, rl.Color(r_cmd.color))
+      rl.DrawCubeV(pos, size, rl.Color(r_cmd.color))
       break
     case .Sphere:
-      rl.DrawSphere(r_cmd.pos, r_cmd.radius, rl.Color(r_cmd.color))
+      rl.DrawSphere(pos, radius, rl.Color(r_cmd.color))
       break
     case .Line:
-      rl.DrawLine3D(r_cmd.pos, r_cmd.size, rl.Color(r_cmd.color))
+      rl.DrawLine3D(pos, size, rl.Color(r_cmd.color))
     }
   }
   clear(&render_queue_3d)

@@ -4,8 +4,6 @@
 
 package ecs
 
-import "core:fmt"
-
 // ======================
 // API::DATA TYPES
 // ======================
@@ -38,6 +36,40 @@ Archetype :: struct {
 }
 
 
+
+Renderable2D :: enum {
+  Rect,
+  Circle,
+  Line
+}
+
+RenderCommand2D :: struct {
+  type: Renderable2D,
+  pos: [2]f16,
+  size: [2]f16,
+  radius: f16,
+  color: Color
+}
+
+Renderable3D :: enum {
+  Cube,
+  Sphere,
+  Line
+}
+
+RenderCommand3D :: struct {
+  type: Renderable3D,
+  pos: [3]f16,
+  size: [3]f16,
+  radius: f16,
+  color: Color
+}
+
+SpatialHash :: struct ($dims: u8, $Type: typeid) {
+  cell_size: f16,
+  buckets: map[[dims]f16][dynamic]Type
+}
+
 // ======================
 // API::GLOBALS
 // ======================
@@ -45,9 +77,7 @@ Archetype :: struct {
 archetypes := make([dynamic]Archetype, 0, 64) // stores entities and systems
 component_registry := make(map[typeid]Component) // stores components
 
-@(private)
 next_component_bit: u64 = 1
-@(private)
 current_entity_id: u64 = 1
 
 // ======================
@@ -114,6 +144,12 @@ component_sparse_set_get :: proc ($T: typeid) -> (u64, ^SparseSet(T)) {
   return meta.id, cast(^SparseSet(T))meta.storage
 }
 
+registry_get_singleton_component :: proc ($T: typeid) -> (^T, bool) {
+  _, set := component_sparse_set_get(T)
+  if len(set.data) != 1 do return nil, false
+  return &set.data[0], true
+}
+
 // ======================
 // API::ENTITY PROCS
 // ======================
@@ -162,6 +198,22 @@ entity_get_by_components :: proc (comps: ..typeid) -> []u64 {
   return e_ss[:]
 }
 
+entity_get_by_singleton_component :: proc (comp: typeid) -> (u64, bool) {
+  mask := mask_calculate(comp)
+  e_id : u64
+  count := 0
+  for arch in archetypes {
+    if arch.mask | mask == arch.mask {
+      if len(arch.entities.data) != 1 {
+	return 0, false
+      }
+      if e_id == 0 || arch.entities.data[0].id != e_id do count += len(arch.entities.data)
+      e_id = arch.entities.data[0].id
+    }
+  }
+  return e_id, true
+}
+
 entity_remove_component :: proc(e: Entity, $T: typeid) -> Entity {
   c_mask, set := sparse_set_get(T)
   e := Entity{e.id, e.mask ~ c_mask}
@@ -182,20 +234,20 @@ entity_remove_component :: proc(e: Entity, $T: typeid) -> Entity {
 // ======================
 
 // Find existing archetype by mask, or create a new one
-@(private)
-archetype_get_or_create :: proc(mask: u64) -> ^Archetype {
+archetype_get_or_create :: proc(mask: u64, create: bool = true) -> ^Archetype {
   for i in 0..<len(archetypes) {
     arch := &archetypes[i]
     if arch.mask == mask {
       return arch
     }
-  } 
-  append(&archetypes, Archetype{mask = mask, entities = sparse_set_init(Entity, 10000)})
-  return &archetypes[len(archetypes)-1]
+  }
+  if create {
+    append(&archetypes, Archetype{mask = mask, entities = sparse_set_init(Entity, 10000)})
+    return &archetypes[len(archetypes)-1]
+  } else {
+    return nil
+  }
 }
-
-
-
 
 // ======================
 // API::BITMASK PROCS

@@ -13,15 +13,22 @@ import "core:fmt"
 
 // camera systems
 
+
 system_camera_mouse_pan :: proc (e_id: u64) {
   cam, _ := entity_get_component(e_id, Camera)
   pos, _ := entity_get_component(e_id, Position)
-  mdelta := rl.GetMousePosition() * 0.005
-  radius : f32 = 500
-  horiz_dir : [2]f32 = linalg.vector_normalize(([2]f32){math.sin(mdelta.x), math.cos(mdelta.x)})
-  vert_dir := mdelta.y*100
-  pos.pos = {horiz_dir.x * radius, vert_dir, horiz_dir.y * radius }
-  cam.direction = {horiz_dir.x, -horiz_dir.y, horiz_dir.y, horiz_dir.x}
+  mouse, has_mouse := registry_get_singleton_component(Mouse)
+  assert(has_mouse, "Mouse not initialized")
+  mouse.y = clamp(mouse.y, -200, 200)
+  mdelta := mouse.pos * 0.001
+  radius : f16 = 500
+  horiz_rad : [2]f16 = linalg.vector_normalize(([2]f16){math.sin(mdelta.x), math.cos(mdelta.x)})
+  //vert_rad := math.sin(mdelta.y)*1000
+  pos.x = horiz_rad.x * radius
+  //pos.y = vert_rad
+  pos.z = horiz_rad.y * radius
+  //bruh := linalg.quaternion_from_pitch_yaw_roll(horiz_rad.x, vert_rad, horiz_rad.y )
+  cam.direction = {horiz_rad.x, -horiz_rad.y, horiz_rad.y, horiz_rad.x} 
 }
 
 
@@ -35,11 +42,19 @@ system_rl_camera_update :: proc (e_id: u64) {
   rl_proj, proj_ok := cam.projection.(rl.CameraProjection)
   assert(proj_ok, "Camera projection not a valid raylib projection")
   
-  rl_cam.position = pos.pos
-  rl_cam.target = cam.target
-  rl_cam.up = cam.up
-  rl_cam.fovy = cam.fovy
+  rl_cam.position = vec_to(pos.pos, f32)
+  rl_cam.target = vec_to(cam.target, f32)
+  rl_cam.up = vec_to(cam.up, f32)
+  
+  rl_cam.fovy = f32(cam.fovy)
   rl_cam.projection = rl_proj  
+}
+
+system_rl_mouse_update :: proc (e_id: u64) {
+  mouse, _ := entity_get_component(e_id, Mouse)
+  delta := rl.GetMouseDelta()
+  mouse.pos += vec_to(delta, f16)
+  rl.SetMousePosition(rl.GetScreenWidth()/2, rl.GetScreenHeight()/2)
 }
 
 // physical entity systems
@@ -58,7 +73,7 @@ system_store_prevpos :: proc(e_id: u64) {
 system_camera_follow :: proc (e_id: u64) {
   pos, _ := entity_get_component(e_id, Position)
   cam_follow, _ := entity_get_component(e_id, CameraFollow)
-  cam_id := entity_get_by_components(Camera)[0]
+  cam_id, _ := entity_get_by_singleton_component(Camera)
   cam, _ := entity_get_component(cam_id, Camera)
   cam_pos, _ := entity_get_component(cam_id, Position)
   cam_pos.x += pos.x
@@ -74,9 +89,9 @@ system_move_player :: proc(e_id: u64) {
   phy, has_phy := entity_get_component(e_id, Physics)
   cam_follow, has_cf := entity_get_component(e_id, CameraFollow)
   
-  speed := ctrl.speed * (2 if is_key_down(ctrl.k_sprint) else 1)
+  speed := ctrl.speed * (ctrl.sprint_mult if is_key_down(ctrl.k_sprint) else 1)
   
-  delta : [3]f32
+  delta : [3]f16
   
   if is_key_down(ctrl.k_left)		{ delta.x -= 1 }
   if is_key_down(ctrl.k_right)		{ delta.x += 1 }
@@ -86,31 +101,29 @@ system_move_player :: proc(e_id: u64) {
   if is_key_down(ctrl.k_backward)	{ delta.z += 1 }
 
   if has_cf {
-    delta_shift : [2]f32 = {-delta.z, delta.x}
+    delta_shift : [2]f16 = {-delta.z, delta.x}
     delta_shift = cam_follow.camera_dir * delta_shift
     delta = {delta_shift.x, delta.y, delta_shift.y}
     
   }
   delta *= speed
-  if has_phy do phy.vel += delta * 0.2; else do pos.pos += delta
-
-  
+  if has_phy do phy.vel += delta * 0.2; else do pos.pos += delta  
 }
 
 system_move_rand :: proc (e_id: u64) {
   pos, _ := entity_get_component(e_id, Position)
   rm, _ := entity_get_component(e_id, RandMover)
   phy, ok := entity_get_component(e_id, Physics)
-  amt : [3]f32 = {rm.speed * f32(rand.int31_max(3)-1), 0, rm.speed * f32(rand.int31_max(3)-1)}
+  amt : [3]f16 = {rm.speed * f16(rand.int31_max(3)-1), 0, rm.speed * f16(rand.int31_max(3)-1)}
   
   if ok do phy.vel += amt; else do pos.pos += amt
 }
 
-calculate_move_norm :: proc (pos: [3]f32, o_pos: [3]f32) -> [3]f32 {
+calculate_move_norm :: proc (pos: [3]f16, o_pos: [3]f16) -> [3]f16 {
   diff:= pos - o_pos
   
   norm_factor := max(abs(diff.x), abs(diff.y), abs(diff.z))
-  amt : [3]f32 = diff / norm_factor
+  amt : [3]f16 = diff / norm_factor
 
   return -amt
 }
@@ -135,12 +148,12 @@ system_move_towards_closest_nn :: proc (e_id: u64) {
 system_move_towards_nn_cluster :: proc (e_id: u64) {
 
   nns, _ := entity_get_component(e_id, Neighbors)
-  avg : [3]f32
+  avg : [3]f16
   nnm, _ := entity_get_component(e_id, NNMover)
 
   pos, _ := entity_get_component(e_id, Position)
   phy, ok := entity_get_component(e_id, Physics)
-  count : f32
+  count : f16
   for nn in nns.ids {
     nn_id, ok := nn.id.?
     if !ok do continue
@@ -175,7 +188,7 @@ system_keep_in_screen :: proc (e_id: u64) {
   coll, has_coll := entity_get_component(e_id, CubeCollider)
   phy, has_phy := entity_get_component(e_id, Physics)
 
-  offset : [3]f32 = has_coll ? coll.size/2 : 0
+  offset : [3]f16 = has_coll ? coll.size/2 : 0
   
   if has_phy && (pos.x < -ROOM_WIDTH/2+offset.x || pos.x > ROOM_WIDTH - offset.x) {
     phy.vel.x *= -1 * phy.collision_damp
@@ -253,7 +266,7 @@ system_detect_collisions :: proc (e_id: u64) {
 	    d := pos.pos - o_pos.pos
 	    p := (half + o_half) - {abs(d.x), abs(d.y), abs(d.z)} 
 	    
-	    epsilon : f32 = 0.01
+	    epsilon : f16 = 0.01
             if p.x > epsilon && p.y > epsilon {
               // Decide axis based on movement intent
               resolve_on_x := false
@@ -267,8 +280,8 @@ system_detect_collisions :: proc (e_id: u64) {
               }
 
               // How much each object should move
-              move_ratio_self : f32 = 1.0
-              move_ratio_other: f32 = 0.0
+              move_ratio_self : f16 = 1.0
+              move_ratio_other: f16 = 0.0
               if has_phy && o_has_phy {
 		move_ratio_self  = 0.5
 		move_ratio_other = 0.5
@@ -310,7 +323,7 @@ system_render_sphere :: proc(e_id: u64) {
   pos, _ := entity_get_component(e_id, Position)
   rend, _ := entity_get_component(e_id, SphereRenderer)
 
-  append(&render_queue_3d, RenderCommand3D{type = .Sphere, pos = pos.pos, radius = f32(rend.d/2), color = rend.color})
+  append(&render_queue_3d, RenderCommand3D{type = .Sphere, pos = pos.pos, radius = f16(rend.d/2), color = rend.color})
   
 }
 
@@ -318,10 +331,10 @@ system_render_pyll :: proc(e_id: u64) {
   pos, _ := entity_get_component(e_id, Position)
   rend, _ := entity_get_component(e_id, PyllRenderer)
   eye_dist := rend.d/3
-  eye_size := f32(rend.d)/5
-  pupil_size := f32(rend.d)/7
+  eye_size := f16(rend.d)/5
+  pupil_size := f16(rend.d)/7
   append(&render_queue_3d,
-	 RenderCommand3D{type = .Sphere, pos = pos.pos, radius = f32(rend.d)/2, color = rend.color},
+	 RenderCommand3D{type = .Sphere, pos = pos.pos, radius = f16(rend.d)/2, color = rend.color},
 	 RenderCommand3D{type = .Sphere, pos = pos.pos + {eye_dist, -eye_dist, eye_dist}, radius = eye_size, color = WHITE},
 	 RenderCommand3D{type = .Sphere, pos = pos.pos + {-eye_dist, -eye_dist, eye_dist}, radius = eye_size, color = WHITE},
 	 RenderCommand3D{type = .Sphere, pos = pos.pos + {eye_dist, -eye_dist, eye_dist}, radius = pupil_size, color = BLACK},
@@ -355,7 +368,7 @@ system_update_neighbors :: proc (e_id: u64) {
   cell := pos.pos / entity_grid.cell_size
   // remove neighbors too far away, and update other's distances
   closest : Maybe(u64) = nil
-  closest_dist : f32 = -1
+  closest_dist : f16 = -1
   for i in 0..<nns.size {
     nn_id, ok := nns.ids[i].id.?
     if ok {
@@ -401,7 +414,7 @@ system_update_neighbors :: proc (e_id: u64) {
 
 	  // ignore if further than max distance
 	  if dist <= MAX_NN_DIST { 
-	    highest_dist : f32 = -1
+	    highest_dist : f16 = -1
 	    highest_dist_i : i32 = -1
 
 	    // insert into and increase size of neighbor array if not filled
@@ -435,31 +448,3 @@ system_update_neighbors :: proc (e_id: u64) {
   }
 }
 
-
-register_systems :: proc () {
-  system_register(system_camera_mouse_pan, Camera, Position, CameraMousePan)
-  
-  
-  system_register(system_reset_acceleration, Physics)
-  system_register(system_store_prevpos, Position, PrevPosition)
-  
-  system_register(system_move_player, Position, Controller)
-  system_register(system_move_rand, Position, RandMover)  
-  //system_register(system_move_towards_closest_nn, Position, Neighbors, NNMover)
-  //system_register(system_move_rand, Position, Neighbors, NNMover, RandMover)
-  system_register(system_calculate_velocity, Position, PrevPosition, Physics)
-  system_register(system_spatial_hash_update_rect, Position, CubeCollider)
-  system_register(system_detect_collisions, Position, CubeCollider)
-  system_register(system_keep_in_screen, Position, KeepInScreen)
-  system_register(system_calculate_pos_from_vel, Position, Physics)
-  system_register(system_update_neighbors, Position, Neighbors)
-  system_register(system_camera_follow, Position, CameraFollow)
-  system_register(system_rl_camera_update, Camera, Position)
-
-  system_register(system_render_nn_conns, Position, Neighbors, RenderNeighborPaths)
-  system_register(system_render_cube, Position, CubeRenderer)
-  system_register(system_render_sphere, Position, SphereRenderer)
-  system_register(system_render_pyll, Position, PyllRenderer)
-  
-}
-  
